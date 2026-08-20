@@ -1,0 +1,20 @@
+# Sensitive files
+.env
+retep.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs
+*.log
+
+# Windows startup (local only)
+start_bot.bat
+start_bot.vbs
+
+# IDE
+.vscode/
+.idea/
