@@ -64,14 +64,8 @@ class ChatCog(commands.Cog):
             response = ""
 
         if response:
-            if clean_content:
-                # #9: Reply to the mention message directly
-                await message.reply(
-                    f"**{message.author.display_name} asked:** {clean_content}\n\n{response}",
-                    mention_author=False,
-                )
-            else:
-                await message.reply(response, mention_author=False)
+            # Just reply directly — the original message is already visible
+            await message.reply(response, mention_author=False)
         else:
             logger.warning("Empty Markov response for mention in #%s", message.channel.name)
 
