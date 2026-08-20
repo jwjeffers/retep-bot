@@ -10,6 +10,9 @@ from core.config import Config
 
 logger = logging.getLogger(__name__)
 
+# Roles to ignore — messages from users with these roles are not ingested
+IGNORED_ROLES = {"Jarvis"}
+
 # Midnight sync time
 MIDNIGHT = time(hour=0, minute=0, second=0)
 
@@ -20,6 +23,21 @@ class SyncCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._syncing = False
+
+    def _should_skip(self, message: discord.Message) -> bool:
+        """Check if a message should be skipped during ingestion."""
+        # Skip own messages (prevent self-cannibalization)
+        if message.author.id == self.bot.user.id:
+            return True
+        # Skip all bot accounts
+        if message.author.bot:
+            return True
+        # Skip users with ignored roles (e.g. Jarvis)
+        if hasattr(message.author, 'roles'):
+            for role in message.author.roles:
+                if role.name in IGNORED_ROLES:
+                    return True
+        return False
 
     async def cog_load(self):
         """Start the midnight sync loop when cog loads."""
@@ -96,8 +114,8 @@ class SyncCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Live ingestion — store new messages from read-list channels."""
-        # Ignore bot's own messages
-        if message.author == self.bot.user:
+        # Skip bots, own messages, and ignored roles
+        if self._should_skip(message):
             return
 
         # Ignore DMs
@@ -195,8 +213,8 @@ class SyncCog(commands.Cog):
 
         try:
             async for message in channel.history(limit=limit, oldest_first=True):
-                # Skip bot messages and empty messages
-                if message.author.bot or not message.content:
+                # Skip bots, own messages, ignored roles, and empty messages
+                if self._should_skip(message) or not message.content:
                     continue
 
                 messages_to_store.append({
