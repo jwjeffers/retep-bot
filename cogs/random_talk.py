@@ -162,14 +162,29 @@ class RandomTalkCog(commands.Cog):
         if not self._emoji_pool:
             return
 
-        # Pick emoji weighted by server usage frequency
-        emoji = random.choices(self._emoji_pool, weights=self._emoji_weights, k=1)[0]
+        # Bell curve for number of emoji: usually 1, sometimes 2, rarely 3+
+        num_emoji = max(1, min(5, round(random.gauss(1.0, 0.6))))
 
-        try:
-            await message.add_reaction(emoji)
-        except (discord.HTTPException, discord.NotFound):
-            # Emoji might not be available — ignore
-            pass
+        # Pick unique emoji weighted by server usage frequency
+        num_emoji = min(num_emoji, len(self._emoji_pool))
+        chosen = []
+        pool = list(self._emoji_pool)
+        weights = list(self._emoji_weights)
+        for _ in range(num_emoji):
+            pick = random.choices(pool, weights=weights, k=1)[0]
+            chosen.append(pick)
+            # Remove from pool so we don't duplicate
+            idx = pool.index(pick)
+            pool.pop(idx)
+            weights.pop(idx)
+            if not pool:
+                break
+
+        for emoji in chosen:
+            try:
+                await message.add_reaction(emoji)
+            except (discord.HTTPException, discord.NotFound):
+                pass
 
     # ── #9: Reply Threading ──────────────────────────────────────────────
 
