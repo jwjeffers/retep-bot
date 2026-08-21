@@ -12,6 +12,15 @@ from core.scheduler import DailySchedule
 
 logger = logging.getLogger(__name__)
 
+# Pride month messages (June)
+PRIDE_MONTH_MESSAGES = [
+    "its pride month norms",
+    "happy pride month norms",
+    "pride month norms 🏳️‍🌈",
+    "reminder that its pride month",
+    "pride month btw",
+]
+
 
 def strip_trailing_period(text: str) -> str:
     """Remove trailing period from Markov output to look natural."""
@@ -96,12 +105,16 @@ class RandomTalkCog(commands.Cog):
 
         # Generate and send the message
         try:
-            chain = await get_chain(channel.guild.id)
-            if chain.is_built:
-                message_text = chain.generate(max_words=self._sample_max_words())
-                message_text = strip_trailing_period(message_text)  # #2
+            # Pride month check (June)
+            if datetime.now().month == 6 and random.random() < 0.20:
+                message_text = random.choice(PRIDE_MONTH_MESSAGES)
             else:
-                message_text = ""
+                chain = await get_chain(channel.guild.id)
+                if chain.is_built:
+                    message_text = chain.generate(max_words=self._sample_max_words())
+                    message_text = strip_trailing_period(message_text)  # #2
+                else:
+                    message_text = ""
 
             if message_text:
                 # #9: Sometimes reply to the last message instead of standalone
