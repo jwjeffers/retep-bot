@@ -74,11 +74,24 @@ class MarkovChain:
             logger.warning("No messages found for guild %s — Markov chain empty", guild_id)
             return
 
+        # Include boosted messages — each boost adds the message again
+        # so its word patterns become more likely in the chain
+        boosts = await database.get_boosted_messages(guild_id)
+        boost_count = 0
+        for content, count in boosts:
+            # Add the message multiple times based on boost (capped at 5x)
+            repeats = min(count, 5)
+            for _ in range(repeats):
+                messages.append({"content": content, "author_name": "retep"})
+                boost_count += 1
+
         self._build_chain(messages)
         logger.info(
-            "Markov chain built for guild %s: %d messages, %d unique states (order=%d), %d order-2 states",
+            "Markov chain built for guild %s: %d messages (+%d boosts), "
+            "%d unique states (order=%d), %d order-2 states",
             guild_id,
             self._message_count,
+            boost_count,
             len(self.chain),
             self.order,
             len(self.chain_o2),

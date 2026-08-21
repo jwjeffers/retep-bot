@@ -96,6 +96,18 @@ async def init_db(db_path: str = DB_PATH) -> None:
             )
         """)
 
+        # Boosted messages — Retep messages that got reactions (feedback loop)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS boosted_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                boost_count INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                UNIQUE(guild_id, content)
+            )
+        """)
+
         # Indexes for fast lookups
         await db.execute("""
             CREATE INDEX IF NOT EXISTS idx_messages_channel
@@ -104,6 +116,10 @@ async def init_db(db_path: str = DB_PATH) -> None:
         await db.execute("""
             CREATE INDEX IF NOT EXISTS idx_reactions_guild
             ON emoji_reactions (guild_id, timestamp)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_boosted_guild
+            ON boosted_messages (guild_id)
         """)
 
         await db.commit()
@@ -192,6 +208,48 @@ async def store_reactions(
         )
         await db.commit()
     return len(reactions)
+
+
+async def boost_message(guild_id: int, content: str) -> int:
+    """
+    Boost a message's influence on the Markov chain.
+    Called when users react to Retep's messages.
+    Returns the new boost count.
+    """
+    content = content.strip()
+    if not content:
+        return 0
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Insert or increment boost count
+        await db.execute(
+            """INSERT INTO boosted_messages (guild_id, content, boost_count, created_at)
+               VALUES (?, ?, 1, datetime('now'))
+               ON CONFLICT(guild_id, content) DO UPDATE SET
+               boost_count = boost_count + 1""",
+            (guild_id, content),
+        )
+        await db.commit()
+
+        cursor = await db.execute(
+            "SELECT boost_count FROM boosted_messages WHERE guild_id = ? AND content = ?",
+            (guild_id, content),
+        )
+        row = await cursor.fetchone()
+    return row[0] if row else 0
+
+
+async def get_boosted_messages(guild_id: int) -> list[tuple[str, int]]:
+    """
+    Get all boosted messages for a guild.
+    Returns list of (content, boost_count) tuples.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT content, boost_count FROM boosted_messages WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return await cursor.fetchall()
 
 
 async def get_recent_messages(

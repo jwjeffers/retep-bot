@@ -186,6 +186,31 @@ class RandomTalkCog(commands.Cog):
             except (discord.HTTPException, discord.NotFound):
                 pass
 
+    # ── Reaction Feedback — boost Retep messages that get reactions ───────
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
+        """When someone reacts to Retep's message, boost it in the Markov chain."""
+        # Only track reactions on Retep's own messages
+        if reaction.message.author != self.bot.user:
+            return
+        # Ignore Retep reacting to itself
+        if user == self.bot.user or user.bot:
+            return
+        if not reaction.message.guild:
+            return
+
+        content = reaction.message.content
+        if not content:
+            return
+
+        boost = await database.boost_message(reaction.message.guild.id, content)
+        logger.info(
+            "Boosted message (x%d): %s",
+            boost,
+            content[:60],
+        )
+
     # ── #9: Reply Threading ──────────────────────────────────────────────
 
     async def _send_or_reply(self, channel: discord.TextChannel, text: str) -> discord.Message:
