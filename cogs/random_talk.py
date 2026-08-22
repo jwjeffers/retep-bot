@@ -151,8 +151,8 @@ class RandomTalkCog(commands.Cog):
         if not await database.is_chat_channel(message.channel.id):
             return
 
-        # ~1% chance to post a random GIF from chat history
-        if random.random() < 0.01:
+        # ~3% chance to post a random GIF from chat history
+        if random.random() < 0.03:
             gif_url = await database.get_random_gif(message.guild.id)
             if gif_url:
                 try:

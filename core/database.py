@@ -555,7 +555,7 @@ async def get_active_hours(guild_id: int) -> list[int]:
 
 async def get_random_gif(guild_id: int) -> str | None:
     """
-    Get a random GIF URL from the server's chat history.
+    Get a random GIF URL from the server's chat history (last year only).
     Looks for Tenor, Giphy, and direct .gif links.
     """
     async with aiosqlite.connect(DB_PATH) as db:
@@ -565,6 +565,7 @@ async def get_random_gif(guild_id: int) -> str | None:
                AND (content LIKE '%tenor.com%'
                     OR content LIKE '%giphy.com%'
                     OR content LIKE '%.gif%')
+               AND timestamp >= datetime('now', '-1 year')
                ORDER BY RANDOM() LIMIT 1""",
             (guild_id,),
         )
