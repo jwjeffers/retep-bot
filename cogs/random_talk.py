@@ -151,6 +151,17 @@ class RandomTalkCog(commands.Cog):
         if not await database.is_chat_channel(message.channel.id):
             return
 
+        # ~1% chance to post a random GIF from chat history
+        if random.random() < 0.01:
+            gif_url = await database.get_random_gif(message.guild.id)
+            if gif_url:
+                try:
+                    await message.channel.send(gif_url)
+                    logger.info("Sent random GIF in #%s: %s", message.channel.name, gif_url[:80])
+                except (discord.HTTPException, discord.Forbidden):
+                    pass
+                return
+
         # ~8% chance to react to any message
         if random.random() > 0.08:
             return

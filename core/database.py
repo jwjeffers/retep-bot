@@ -552,3 +552,29 @@ async def get_active_hours(guild_id: int) -> list[int]:
 
     return active if active else list(range(9, 24))
 
+
+async def get_random_gif(guild_id: int) -> str | None:
+    """
+    Get a random GIF URL from the server's chat history.
+    Looks for Tenor, Giphy, and direct .gif links.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """SELECT content FROM messages
+               WHERE guild_id = ?
+               AND (content LIKE '%tenor.com%'
+                    OR content LIKE '%giphy.com%'
+                    OR content LIKE '%.gif%')
+               ORDER BY RANDOM() LIMIT 1""",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+
+    if not row:
+        return None
+
+    import re
+    content = row[0]
+    # Extract the URL from the message
+    url_match = re.search(r'https?://\S+', content)
+    return url_match.group(0) if url_match else None
