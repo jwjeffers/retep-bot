@@ -18,7 +18,7 @@ class Config:
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     # Scheduling
-    MESSAGES_PER_DAY: int = int(os.getenv("MESSAGES_PER_DAY", "3"))
+    MESSAGES_PER_DAY: int = int(os.getenv("MESSAGES_PER_DAY", "1"))
     ACTIVE_HOURS_START: int = int(os.getenv("ACTIVE_HOURS_START", "10"))
     ACTIVE_HOURS_END: int = int(os.getenv("ACTIVE_HOURS_END", "23"))
 
