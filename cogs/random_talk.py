@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Random talk cog — sends unprompted messages and emoji reactions."""
 
 import logging

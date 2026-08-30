@@ -1,3 +1,4 @@
+from __future__ import annotations
 """SQLite database for message storage and channel configuration."""
 
 import aiosqlite

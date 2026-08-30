@@ -1,3 +1,4 @@
+from __future__ import annotations
 """OpenAI LLM client wrapper for Retep bot."""
 
 import logging

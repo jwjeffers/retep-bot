@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Admin cog — channel list management and bot status."""
 
 import logging

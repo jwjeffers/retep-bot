@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Personality prompt builder from chat history."""
 
 import logging

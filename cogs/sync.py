@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Sync cog — chat history ingestion from Discord channels."""
 
 import logging

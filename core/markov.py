@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Markov chain text generator built from Discord chat logs."""
 
 import random

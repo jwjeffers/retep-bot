@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Retep — Discord Chat-Personality Bot
 Entry point: loads config, initializes database, registers cogs, and starts the bot.

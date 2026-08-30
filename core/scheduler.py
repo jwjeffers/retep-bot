@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Bell-curve daily message scheduler for Retep bot."""
 
 import random

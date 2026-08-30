@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Chat cog — handles @mentions, /ask, and /teams commands."""
 
 import logging

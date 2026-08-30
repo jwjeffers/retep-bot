@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Configuration loader for Retep bot."""
 
 import os
