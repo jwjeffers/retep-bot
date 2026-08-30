@@ -2,7 +2,9 @@
 
 import random
 import re
+import math
 import logging
+from datetime import datetime, timezone
 from collections import defaultdict
 from core import database
 
@@ -98,14 +100,42 @@ class MarkovChain:
         )
 
     def _build_chain(self, messages: list[dict]) -> None:
-        """Build the transition table from a list of message dicts."""
+        """Build the transition table from a list of message dicts.
+        
+        Applies logarithmic recency weighting: recent messages get up to +15%
+        more influence, oldest messages get -15%.
+        """
         self.chain.clear()
         self.chain_o2.clear()
         self.starters.clear()
         self._message_count = 0
         self._originals: set[str] = set()  # For detecting verbatim copies
 
-        for msg in messages:
+        # Calculate recency weights for all messages
+        now = datetime.now(timezone.utc)
+        ages = []  # (index, age_days)
+        for i, msg in enumerate(messages):
+            ts_str = msg.get("timestamp")
+            if ts_str:
+                try:
+                    # Handle various timestamp formats
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    age = (now - ts).total_seconds() / 86400  # age in days
+                    ages.append((i, max(age, 0)))
+                except (ValueError, TypeError):
+                    ages.append((i, None))
+            else:
+                ages.append((i, None))
+
+        # Find max age for normalization
+        valid_ages = [a for _, a in ages if a is not None]
+        max_age = max(valid_ages) if valid_ages else 1.0
+        if max_age == 0:
+            max_age = 1.0
+
+        for msg_idx, msg in enumerate(messages):
             content = msg["content"].strip()
             if not content:
                 continue
@@ -122,6 +152,16 @@ class MarkovChain:
             if len(words) < self.order:
                 continue
 
+            # Calculate recency weight: log curve from 1.15 (newest) to 0.85 (oldest)
+            _, age = ages[msg_idx] if msg_idx < len(ages) else (None, None)
+            if age is not None:
+                ratio = age / max_age  # 0 = newest, 1 = oldest
+                # Logarithmic curve: log(1 + ratio*(e-1)) maps [0,1] -> [0,1] with log shape
+                log_ratio = math.log1p(ratio * (math.e - 1))  # 0 to 1, log-curved
+                weight = 1.15 - 0.30 * log_ratio  # 1.15 down to 0.85
+            else:
+                weight = 1.0  # No timestamp = neutral weight
+
             # Record the sentence starter
             starter = tuple(words[: self.order])
             self.starters.append(starter)
@@ -137,6 +177,32 @@ class MarkovChain:
                 state_o2 = tuple(words[i : i + 2])
                 next_word = words[i + 2]
                 self.chain_o2[state_o2].append(next_word)
+
+            # Recency bonus: add transitions again with probability (weight - 1.0)
+            # For weight > 1.0 (recent): chance to double transitions
+            # For weight < 1.0 (old): we already added once, no extra
+            if weight > 1.0 and random.random() < (weight - 1.0):
+                # Add bonus transitions for recent messages
+                self.starters.append(starter)
+                for i in range(len(words) - self.order):
+                    state = tuple(words[i : i + self.order])
+                    next_word = words[i + self.order]
+                    self.chain[state].append(next_word)
+                for i in range(len(words) - 2):
+                    state_o2 = tuple(words[i : i + 2])
+                    next_word = words[i + 2]
+                    self.chain_o2[state_o2].append(next_word)
+            elif weight < 1.0 and random.random() > weight:
+                # Remove the transitions we just added for very old messages
+                self.starters.pop()
+                for i in range(len(words) - self.order):
+                    state = tuple(words[i : i + self.order])
+                    if self.chain[state]:
+                        self.chain[state].pop()
+                for i in range(len(words) - 2):
+                    state_o2 = tuple(words[i : i + 2])
+                    if self.chain_o2[state_o2]:
+                        self.chain_o2[state_o2].pop()
 
         self._built = True
 

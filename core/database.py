@@ -284,7 +284,7 @@ async def get_random_sample(
         if read_channels:
             placeholders = ",".join("?" for _ in read_channels)
             cursor = await db.execute(
-                f"""SELECT author_name, content FROM messages
+                f"""SELECT author_name, content, timestamp FROM messages
                     WHERE guild_id = ?
                     AND channel_id IN ({placeholders})
                     AND LENGTH(content) >= 5
@@ -295,7 +295,7 @@ async def get_random_sample(
             )
         else:
             cursor = await db.execute(
-                """SELECT author_name, content FROM messages
+                """SELECT author_name, content, timestamp FROM messages
                    WHERE guild_id = ?
                    AND LENGTH(content) >= 5
                    AND content NOT LIKE '!%'
