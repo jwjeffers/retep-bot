@@ -59,8 +59,8 @@ class ChatCog(commands.Cog):
         # Generate response using Markov chain
         chain = await get_chain(message.guild.id)
         if chain.is_built:
-            response = chain.generate(
-                max_words=25,
+            response = chain.generate_multi_sentence(
+                max_sentences=3,
                 seed_text=clean_content if clean_content else None,
             )
             response = strip_trailing_period(response)  # #2
@@ -93,8 +93,8 @@ class ChatCog(commands.Cog):
         # Generate response using Markov chain
         chain = await get_chain(interaction.guild_id)
         if chain.is_built:
-            response = chain.generate(
-                max_words=25,
+            response = chain.generate_multi_sentence(
+                max_sentences=3,
                 seed_text=question,
             )
             response = strip_trailing_period(response)  # #2

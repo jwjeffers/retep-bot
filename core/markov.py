@@ -221,7 +221,7 @@ class MarkovChain:
         Generate text using the Markov chain with best-of-N selection.
 
         Generates multiple candidates and picks the best one based on
-        natural endings, sentence completeness, and length.
+        natural endings, sentence completeness, length, and seed relevance.
 
         Args:
             max_words: Maximum number of words to generate.
@@ -234,13 +234,22 @@ class MarkovChain:
         if not self._built or not self.starters:
             return ""
 
-        # Find seed state if provided
-        seed_state = self._find_seed_state(seed_text) if seed_text else None
+        # Find multiple diverse seed states for variety across candidates
+        seed_states = []
+        if seed_text:
+            seed_states = self._find_seed_states(seed_text, n=candidates // 2)
 
         # Generate multiple candidates — no hard min_words, let scoring decide
         results = []
-        for _ in range(candidates):
-            state = seed_state if seed_state else random.choice(self.starters)
+        for i in range(candidates):
+            # Alternate between seed states and random starters for diversity
+            if seed_states and i < len(seed_states):
+                state = seed_states[i]
+            elif seed_states:
+                state = random.choice(seed_states)
+            else:
+                state = random.choice(self.starters)
+
             text = self._generate_once(state, max_words)
             if text:
                 text = self._clean_output(text)
@@ -253,11 +262,43 @@ class MarkovChain:
             text = self._generate_once(state, max_words)
             return self._clean_output(text) if text else ""
 
-        # Score and pick the best candidate
-        scored = [(self._score_text(t), t) for t in results]
+        # Score and pick the best candidate, with relevance bonus for seeded queries
+        scored = [(self._score_text(t, seed_text=seed_text), t) for t in results]
         scored.sort(key=lambda x: x[0], reverse=True)
 
         return scored[0][1]
+
+    def generate_multi_sentence(
+        self,
+        max_sentences: int = 3,
+        seed_text: str | None = None,
+    ) -> str:
+        """
+        Generate a multi-sentence response with bell curve distribution.
+        Usually 1 sentence, sometimes 2, rarely 3.
+
+        Args:
+            max_sentences: Maximum number of sentences.
+            seed_text: Optional text to seed generation with relevant starting point.
+
+        Returns:
+            Multi-sentence generated text.
+        """
+        # Bell curve: usually 1, sometimes 2, rarely 3
+        count = max(1, min(max_sentences, round(random.gauss(1.3, 0.6))))
+
+        sentences = []
+        for i in range(count):
+            # Only use seed text for the first sentence
+            text = self.generate(
+                max_words=25,
+                seed_text=seed_text if i == 0 else None,
+                candidates=20,
+            )
+            if text and text not in sentences:  # avoid duplicate sentences
+                sentences.append(text)
+
+        return " ".join(sentences)
 
     def _generate_once(self, state: tuple[str, ...], max_words: int = 35) -> str:
         """Single generation from a given starting state, with order-2 fallback."""
@@ -326,10 +367,11 @@ class MarkovChain:
             or 0x2700 <= last <= 0x27BF
         )
 
-    def _score_text(self, text: str) -> float:
+    def _score_text(self, text: str, seed_text: str | None = None) -> float:
         """
         Score a generated text for quality.
         Higher score = better candidate.
+        Optionally boosts score for relevance to seed_text.
         """
         words = text.split()
         score = 0.0
@@ -361,14 +403,33 @@ class MarkovChain:
         unique_ratio = len(set(words)) / max(len(words), 1)
         score += unique_ratio
 
+        # Relevance bonus: if seed text was provided, reward candidates that
+        # contain seed keywords (makes responses topically relevant)
+        if seed_text:
+            seed_words = set(seed_text.lower().split())
+            stop_words = {
+                "the", "a", "an", "is", "are", "was", "were", "be", "been",
+                "being", "have", "has", "had", "do", "does", "did", "will",
+                "would", "could", "should", "to", "of", "in", "for", "on",
+                "with", "at", "by", "from", "it", "this", "that", "what",
+                "you", "i", "me", "my", "we", "and", "or", "but", "not",
+                "retep", "ask", "hey", "yo", "please", "tell",
+            }
+            content_words = seed_words - stop_words
+            if content_words:
+                text_words = set(w.lower() for w in words)
+                overlap = text_words & content_words
+                # +2 per matching keyword, rewards topical relevance
+                score += len(overlap) * 2.0
+
         return score
 
     def _find_seed_state(self, seed_text: str) -> tuple[str, ...] | None:
         """
         Try to find a starting state that's relevant to the seed text.
-        Looks for chain states that contain words from the seed.
+        Uses multiple strategies: bigram matching → keyword matching → single word.
         """
-        seed_words = set(seed_text.lower().split())
+        seed_words = seed_text.lower().split()
         # Remove common words that would match too broadly
         stop_words = {
             "the", "a", "an", "is", "are", "was", "were", "be", "been",
@@ -379,25 +440,98 @@ class MarkovChain:
             "where", "why", "your", "you", "i", "me", "my", "we", "our",
             "he", "she", "they", "them", "his", "her", "its", "and", "or",
             "but", "not", "no", "so", "if", "then", "than", "up", "out",
+            "retep", "ask", "hey", "yo", "please", "tell",
         }
-        seed_words -= stop_words
+        content_words = [w for w in seed_words if w not in stop_words and len(w) > 1]
 
-        if not seed_words:
+        if not content_words:
             return None
 
-        # Find states that contain any of the seed words
-        matching_states = []
+        # Strategy 1: Try to find states containing bigrams from the seed
+        # (e.g., "league of" or "play tonight" → very relevant starters)
+        seed_bigrams = set()
+        for i in range(len(seed_words) - 1):
+            seed_bigrams.add((seed_words[i], seed_words[i + 1]))
+
+        if seed_bigrams:
+            bigram_matches = []
+            for state in self.chain:
+                state_lower = tuple(w.lower() for w in state)
+                for j in range(len(state_lower) - 1):
+                    if (state_lower[j], state_lower[j + 1]) in seed_bigrams:
+                        bigram_matches.append(state)
+                        break
+            if bigram_matches:
+                return random.choice(bigram_matches)
+
+        # Strategy 2: Find states with multiple content word matches (most relevant)
+        content_set = set(content_words)
+        multi_match = []
+        single_match = []
         for state in self.chain:
             state_words = {w.lower() for w in state}
-            overlap = state_words & seed_words
-            if overlap:
-                # Weight by number of matching words
-                matching_states.extend([state] * len(overlap))
+            overlap = state_words & content_set
+            if len(overlap) >= 2:
+                multi_match.extend([state] * len(overlap))
+            elif len(overlap) == 1:
+                single_match.extend([state] * 1)
 
-        if matching_states:
-            return random.choice(matching_states)
+        if multi_match:
+            return random.choice(multi_match)
+
+        # Strategy 3: Single content word match
+        if single_match:
+            return random.choice(single_match)
 
         return None
+
+    def _find_seed_states(self, seed_text: str, n: int = 5) -> list[tuple[str, ...]]:
+        """
+        Find multiple relevant seed states for diversity across candidates.
+        Returns up to n different seed states.
+        """
+        seed_words = seed_text.lower().split()
+        stop_words = {
+            "the", "a", "an", "is", "are", "was", "were", "be", "been",
+            "being", "have", "has", "had", "do", "does", "did", "will",
+            "would", "could", "should", "may", "might", "can", "shall",
+            "to", "of", "in", "for", "on", "with", "at", "by", "from",
+            "it", "this", "that", "what", "which", "who", "how", "when",
+            "where", "why", "your", "you", "i", "me", "my", "we", "our",
+            "he", "she", "they", "them", "his", "her", "its", "and", "or",
+            "but", "not", "no", "so", "if", "then", "than", "up", "out",
+            "retep", "ask", "hey", "yo", "please", "tell",
+        }
+        content_words = set(w for w in seed_words if w not in stop_words and len(w) > 1)
+
+        if not content_words:
+            return []
+
+        # Collect all matching states with weights
+        weighted = []
+        for state in self.chain:
+            state_words = {w.lower() for w in state}
+            overlap = state_words & content_words
+            if overlap:
+                # Weight by overlap count squared for relevance
+                weighted.extend([state] * (len(overlap) ** 2))
+
+        if not weighted:
+            return []
+
+        # Pick n diverse states
+        results = []
+        seen = set()
+        for _ in range(n * 3):  # oversample to get diversity
+            pick = random.choice(weighted)
+            key = pick  # tuple is hashable
+            if key not in seen:
+                seen.add(key)
+                results.append(pick)
+                if len(results) >= n:
+                    break
+
+        return results
 
     def generate_multiple(self, count: int = 5, max_words: int = 35) -> list[str]:
         """Generate multiple messages and return them all."""
