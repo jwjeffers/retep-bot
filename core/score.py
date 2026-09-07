@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from sentence_transformers import SentenceTransformer, CrossEncoder
 import numpy as np
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,8 @@ class MessageScore:
         return self.model
     def getCEModel(self):
         return self.ceModel
+    def sigmoid(self, val):
+        return 1 / (1 + math.exp(-val))
 
 global score
 
@@ -28,8 +31,9 @@ def score(input, output):
     ceModel = score.getCEModel()
     model = score.getModel()
     # first get cross encoder score
-    score = ceModel.predict([(input, output)])[0]
-    logger.info(f"Cross encoder score: {score}")
+    ceScore = float(ceModel.predict([(input, output)])[0])
+    ceScore = score.sigmoid(ceScore)
+    logger.info(f"Cross encoder score: {ceScore}")
     # embed input and output messages
     inputFormated = [f'search_query: {input}']
     outputFormated = [f'search_query: {output}']
@@ -38,6 +42,8 @@ def score(input, output):
     embeddingOut = model.encode(outputFormated).reshape(-1)
     # find cosine similarity
     cosScore = np.dot(embeddingIn, embeddingOut) / (np.linalg.norm(embeddingIn) * np.linalg.norm(embeddingOut))
+    cosScore = (float(cosScore) + 1) / 2
     logger.info(f"Cosine similarity score: {cosScore}")
     # return scores added up
-    return round(float(score + cosScore), 2)
+    finalScore = round((0.8*ceScore + 0.2*cosScore) *100, 2) 
+    return finalScore
