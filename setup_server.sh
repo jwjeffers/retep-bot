@@ -1,6 +1,7 @@
 #!/bin/bash
-# Retep Bot - Oracle Cloud Server Setup Script
-# Run this after SSH'ing into your new VM:
+# Retep Bot - Server Setup Script
+# Supports both Ubuntu/Debian (apt) and Oracle Linux/RHEL (dnf)
+# Run after SSH'ing into your new VM:
 #   bash setup_server.sh
 
 set -e
@@ -9,13 +10,31 @@ echo "========================================="
 echo "  Retep Bot - Server Setup"
 echo "========================================="
 
+# Detect package manager
+if command -v apt &> /dev/null; then
+    PKG_MGR="apt"
+elif command -v dnf &> /dev/null; then
+    PKG_MGR="dnf"
+else
+    echo "Error: No supported package manager found (apt or dnf)"
+    exit 1
+fi
+
 # Update system
 echo "[1/6] Updating system packages..."
-sudo apt update && sudo apt upgrade -y
+if [ "$PKG_MGR" = "apt" ]; then
+    sudo apt update && sudo apt upgrade -y
+else
+    sudo dnf update -y
+fi
 
-# Install Python 3.11+ and pip
+# Install Python 3 and pip
 echo "[2/6] Installing Python..."
-sudo apt install -y python3 python3-pip python3-venv git
+if [ "$PKG_MGR" = "apt" ]; then
+    sudo apt install -y python3 python3-pip python3-venv git
+else
+    sudo dnf install -y python3 python3-pip git
+fi
 
 # Clone the repo
 echo "[3/6] Cloning retep-bot from GitHub..."
@@ -27,6 +46,7 @@ cd retep-bot
 echo "[4/6] Setting up Python virtual environment..."
 python3 -m venv venv
 source venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # Create .env file
@@ -50,7 +70,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$HOME/retep-bot
-ExecStart=$HOME/retep-bot/venv/bin/python bot.py
+ExecStart=$HOME/retep-bot/venv/bin/python3 bot.py
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1

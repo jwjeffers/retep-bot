@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import random
 import logging
-from datetime import datetime, timedelta, time
+from datetime import datetime
 from core.config import Config
 
 logger = logging.getLogger(__name__)
@@ -24,19 +24,6 @@ class DailySchedule:
         self._scheduled_times: list[datetime] = []
         self._sent_times: set[int] = set()  # indices of already-sent times
         self._schedule_date: datetime | None = None
-
-    @property
-    def times(self) -> list[datetime]:
-        """Get today's scheduled times."""
-        return list(self._scheduled_times)
-
-    @property
-    def next_time(self) -> datetime | None:
-        """Get the next unsent scheduled time, or None if all sent."""
-        for i, t in enumerate(self._scheduled_times):
-            if i not in self._sent_times:
-                return t
-        return None
 
     @property
     def remaining_count(self) -> int:

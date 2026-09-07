@@ -14,10 +14,6 @@ class Config:
     DISCORD_TOKEN: str = os.getenv("DISCORD_TOKEN", "")
     BOT_NAME: str = os.getenv("BOT_NAME", "Retep")
 
-    # OpenAI
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
     # Scheduling
     MESSAGES_PER_DAY: int = int(os.getenv("MESSAGES_PER_DAY", "1"))
     ACTIVE_HOURS_START: int = int(os.getenv("ACTIVE_HOURS_START", "10"))
@@ -35,8 +31,6 @@ class Config:
         errors = []
         if not cls.DISCORD_TOKEN:
             errors.append("DISCORD_TOKEN is not set")
-        if not cls.OPENAI_API_KEY:
-            errors.append("OPENAI_API_KEY is not set")
         if cls.ACTIVE_HOURS_START >= cls.ACTIVE_HOURS_END:
             errors.append("ACTIVE_HOURS_START must be before ACTIVE_HOURS_END")
         return errors

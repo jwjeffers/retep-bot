@@ -253,21 +253,7 @@ async def get_boosted_messages(guild_id: int) -> list[tuple[str, int]]:
         return await cursor.fetchall()
 
 
-async def get_recent_messages(
-    channel_id: int, limit: int = 20
-) -> list[dict]:
-    """Get the most recent messages from a channel, oldest first."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """SELECT author_name, content, timestamp FROM messages
-               WHERE channel_id = ?
-               ORDER BY timestamp DESC LIMIT ?""",
-            (channel_id, limit),
-        )
-        rows = await cursor.fetchall()
-    # Reverse so oldest is first (natural reading order)
-    return [dict(r) for r in reversed(rows)]
+
 
 
 async def get_random_sample(

@@ -2,7 +2,6 @@ from __future__ import annotations
 """Markov chain text generator built from Discord chat logs."""
 
 import random
-import re
 import math
 import logging
 from datetime import datetime, timezone
@@ -424,67 +423,6 @@ class MarkovChain:
 
         return score
 
-    def _find_seed_state(self, seed_text: str) -> tuple[str, ...] | None:
-        """
-        Try to find a starting state that's relevant to the seed text.
-        Uses multiple strategies: bigram matching → keyword matching → single word.
-        """
-        seed_words = seed_text.lower().split()
-        # Remove common words that would match too broadly
-        stop_words = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "can", "shall",
-            "to", "of", "in", "for", "on", "with", "at", "by", "from",
-            "it", "this", "that", "what", "which", "who", "how", "when",
-            "where", "why", "your", "you", "i", "me", "my", "we", "our",
-            "he", "she", "they", "them", "his", "her", "its", "and", "or",
-            "but", "not", "no", "so", "if", "then", "than", "up", "out",
-            "retep", "ask", "hey", "yo", "please", "tell",
-        }
-        content_words = [w for w in seed_words if w not in stop_words and len(w) > 1]
-
-        if not content_words:
-            return None
-
-        # Strategy 1: Try to find states containing bigrams from the seed
-        # (e.g., "league of" or "play tonight" → very relevant starters)
-        seed_bigrams = set()
-        for i in range(len(seed_words) - 1):
-            seed_bigrams.add((seed_words[i], seed_words[i + 1]))
-
-        if seed_bigrams:
-            bigram_matches = []
-            for state in self.chain:
-                state_lower = tuple(w.lower() for w in state)
-                for j in range(len(state_lower) - 1):
-                    if (state_lower[j], state_lower[j + 1]) in seed_bigrams:
-                        bigram_matches.append(state)
-                        break
-            if bigram_matches:
-                return random.choice(bigram_matches)
-
-        # Strategy 2: Find states with multiple content word matches (most relevant)
-        content_set = set(content_words)
-        multi_match = []
-        single_match = []
-        for state in self.chain:
-            state_words = {w.lower() for w in state}
-            overlap = state_words & content_set
-            if len(overlap) >= 2:
-                multi_match.extend([state] * len(overlap))
-            elif len(overlap) == 1:
-                single_match.extend([state] * 1)
-
-        if multi_match:
-            return random.choice(multi_match)
-
-        # Strategy 3: Single content word match
-        if single_match:
-            return random.choice(single_match)
-
-        return None
-
     def _find_seed_states(self, seed_text: str, n: int = 5) -> list[tuple[str, ...]]:
         """
         Find multiple relevant seed states for diversity across candidates.
@@ -533,9 +471,6 @@ class MarkovChain:
 
         return results
 
-    def generate_multiple(self, count: int = 5, max_words: int = 35) -> list[str]:
-        """Generate multiple messages and return them all."""
-        return [self.generate(max_words=max_words) for _ in range(count)]
 
 
 # ── Global instance cache ────────────────────────────────────────────────────
@@ -556,11 +491,3 @@ async def get_chain(guild_id: int, force_rebuild: bool = False) -> MarkovChain:
     )
     _chains[guild_id] = chain
     return chain
-
-
-def invalidate_chain(guild_id: int | None = None) -> None:
-    """Clear cached Markov chain(s)."""
-    if guild_id is None:
-        _chains.clear()
-    else:
-        _chains.pop(guild_id, None)

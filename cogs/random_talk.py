@@ -8,7 +8,6 @@ import discord
 from discord.ext import commands, tasks
 from core import database
 from core.markov import get_chain
-from core.config import Config
 from core.scheduler import DailySchedule
 
 logger = logging.getLogger(__name__)
