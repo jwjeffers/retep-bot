@@ -15,3 +15,7 @@ def test_score_combines_cross_encoder_and_cosine_similarity():
     input = "who is the diddy blud"
     output = "In the diddy acolyte's basement?"
     assert score(input, output) == 16.47
+    # This is a non retep example to show that the scoring actually can go high
+    input = "What is the capital of France"
+    output = "The capital of France is Paris"
+    assert score(input, output) == 99.53

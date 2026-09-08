@@ -32,6 +32,7 @@ def score(input, output):
     model = score.getModel()
     # first get cross encoder score
     ceScore = float(ceModel.predict([(input, output)])[0])
+    # sigmoid to put the score between 0-1
     ceScore = score.sigmoid(ceScore)
     logger.info(f"Cross encoder score: {ceScore}")
     # embed input and output messages
@@ -42,8 +43,9 @@ def score(input, output):
     embeddingOut = model.encode(outputFormated).reshape(-1)
     # find cosine similarity
     cosScore = np.dot(embeddingIn, embeddingOut) / (np.linalg.norm(embeddingIn) * np.linalg.norm(embeddingOut))
+    # normalize
     cosScore = (float(cosScore) + 1) / 2
     logger.info(f"Cosine similarity score: {cosScore}")
-    # return scores added up
+    # 80% encoder score 20% cosine similarity score
     finalScore = round((0.8*ceScore + 0.2*cosScore) *100, 2) 
     return finalScore
