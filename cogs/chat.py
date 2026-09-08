@@ -8,6 +8,7 @@ from discord.ext import commands
 from discord import app_commands
 from core import database
 from core.markov import get_chain
+from core.score import score
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +67,10 @@ class ChatCog(commands.Cog):
             response = strip_trailing_period(response)  # #2
         else:
             response = ""
-
+        messageScore = score(clean_content, response)
         if response:
             # Just reply directly — the original message is already visible
-            await message.reply(response, mention_author=False)
+            await message.reply(response + f"\n\nmessage score: {messageScore}", mention_author=False)
         else:
             logger.warning("Empty Markov response for mention in #%s", message.channel.name)
 
