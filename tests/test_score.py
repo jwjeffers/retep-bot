@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 from core.score import score
 

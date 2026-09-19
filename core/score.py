@@ -32,14 +32,14 @@ def get_scorer():
     return _scorer
 
 def score(input_text, output_text):
-    score = get_scorer()
+    scorer = get_scorer()
     # Get models
-    ce_model = score.get_ce_model()
-    model = score.get_model()
+    ce_model = scorer.get_ce_model()
+    model = scorer.get_model()
     # first get cross encoder score
     ce_score = float(ce_model.predict([(input_text, output_text)])[0])
     # sigmoid to put the score between 0-1
-    ce_score = score.sigmoid(ce_score)
+    ce_score = scorer.sigmoid(ce_score)
     logger.info(f"Cross encoder score: {ce_score}")
     # embed input and output messages
     input_formated = [f'search_query: {input_text}']
@@ -53,5 +53,5 @@ def score(input_text, output_text):
     cos_score = (float(cos_score) + 1) / 2
     logger.info(f"Cosine similarity score: {cos_score}")
     # 80% encoder score 20% cosine similarity score
-    finalScore = round((0.8*ce_score + 0.2*cos_score) *100, 2) 
-    return finalScore
+    final_score = round((0.8*ce_score + 0.2*cos_score) *100, 2) 
+    return final_score
