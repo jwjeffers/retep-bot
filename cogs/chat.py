@@ -98,10 +98,10 @@ class ChatCog(commands.Cog):
                 max_sentences=3,
                 seed_text=question,
             )
-            response = strip_trailing_period(response)  # #2
+            messageScore = score(question, response)
+            response = strip_trailing_period(response + f"\n\nmessage score: {messageScore}")  # #2
         else:
             response = "need to /sync first so i have something to work with"
-
         # Show the question and response together
         await interaction.followup.send(
             f"**{interaction.user.display_name} asked:** {question}\n\n{response}"

@@ -14,38 +14,44 @@ class MessageScore:
             "nomic-ai/nomic-embed-text-v1.5",
             trust_remote_code=True,
             )
-        self.ceModel = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cpu")
+        self.ce_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cpu")
 
-    def getModel(self):
+    def get_model(self):
         return self.model
-    def getCEModel(self):
-        return self.ceModel
+    def get_ce_model(self):
+        return self.ce_model
     def sigmoid(self, val):
         return 1 / (1 + math.exp(-val))
 
-global score
+_scorer = None
 
-def score(input, output):
-    score = MessageScore()
+def get_scorer():
+    global _scorer
+    if _scorer is None:
+        _scorer = MessageScore()
+    return _scorer
+
+def score(input_text, output_text):
+    score = get_scorer()
     # Get models
-    ceModel = score.getCEModel()
-    model = score.getModel()
+    ce_model = score.get_ce_model()
+    model = score.get_model()
     # first get cross encoder score
-    ceScore = float(ceModel.predict([(input, output)])[0])
+    ce_score = float(ce_model.predict([(input_text, output_text)])[0])
     # sigmoid to put the score between 0-1
-    ceScore = score.sigmoid(ceScore)
-    logger.info(f"Cross encoder score: {ceScore}")
+    ce_score = score.sigmoid(ce_score)
+    logger.info(f"Cross encoder score: {ce_score}")
     # embed input and output messages
-    inputFormated = [f'search_query: {input}']
-    outputFormated = [f'search_query: {output}']
+    input_formated = [f'search_query: {input_text}']
+    output_formated = [f'search_query: {output_text}']
     # encode them
-    embeddingIn = model.encode(inputFormated).reshape(-1)
-    embeddingOut = model.encode(outputFormated).reshape(-1)
+    embedding_in = model.encode(input_formated).reshape(-1)
+    embedding_out = model.encode(output_formated).reshape(-1)
     # find cosine similarity
-    cosScore = np.dot(embeddingIn, embeddingOut) / (np.linalg.norm(embeddingIn) * np.linalg.norm(embeddingOut))
+    cos_score = np.dot(embedding_in, embedding_out) / (np.linalg.norm(embedding_in) * np.linalg.norm(embedding_out))
     # normalize
-    cosScore = (float(cosScore) + 1) / 2
-    logger.info(f"Cosine similarity score: {cosScore}")
+    cos_score = (float(cos_score) + 1) / 2
+    logger.info(f"Cosine similarity score: {cos_score}")
     # 80% encoder score 20% cosine similarity score
-    finalScore = round((0.8*ceScore + 0.2*cosScore) *100, 2) 
+    finalScore = round((0.8*ce_score + 0.2*cos_score) *100, 2) 
     return finalScore
