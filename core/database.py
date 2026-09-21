@@ -383,15 +383,15 @@ async def get_common_emoji(guild_id: int, top_n: int = 20, min_count: int = 2) -
     """
     Get the most commonly used emoji combining reaction data + text emoji.
     Reactions are weighted more heavily since they reflect true emoji preferences.
-    Tries last 3 months first, falls back to all-time if not enough data.
+    Tries last year first, falls back to all-time if not enough data.
     Returns a list of (emoji, count) tuples sorted by frequency.
     """
     from datetime import datetime, timedelta
 
-    three_months_ago = (datetime.now() - timedelta(days=90)).isoformat()
+    one_year_ago = (datetime.now() - timedelta(days=365)).isoformat()
 
     # Try recent data first
-    results = await _get_combined_emoji(guild_id, three_months_ago, top_n, min_count)
+    results = await _get_combined_emoji(guild_id, one_year_ago, top_n, min_count)
 
     # Fall back to all-time if not enough
     if len(results) < 5:
@@ -425,8 +425,8 @@ async def _get_combined_emoji(
                 (guild_id,),
             )
         for emoji, total in await cursor.fetchall():
-            # Weight reactions 3x since they're a stronger signal
-            emoji_counts[emoji] = emoji_counts.get(emoji, 0) + (total * 3)
+            # Weight reactions 1.5x since they're a stronger signal
+            emoji_counts[emoji] = emoji_counts.get(emoji, 0) + int(total * 1.5)
 
         # 2. Also count emoji in message text
         if since:

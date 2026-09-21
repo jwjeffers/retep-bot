@@ -162,8 +162,8 @@ class RandomTalkCog(commands.Cog):
                     pass
                 return
 
-        # ~5% chance to react to any message
-        if random.random() > 0.053:
+        # ~3% chance to react to any message
+        if random.random() > 0.03:
             return
 
         if not self._emoji_pool:
