@@ -71,6 +71,10 @@ class ChatCog(commands.Cog):
         if response:
             # Just reply directly — the original message is already visible
             await message.reply(response + f"\n\nmessage score: {messageScore}", mention_author=False)
+            await self._record_score(
+                message.guild.id, message.channel.id, message.author,
+                clean_content, response, messageScore,
+            )
         else:
             logger.warning("Empty Markov response for mention in #%s", message.channel.name)
 
@@ -93,19 +97,46 @@ class ChatCog(commands.Cog):
 
         # Generate response using Markov chain
         chain = await get_chain(interaction.guild_id)
+        messageScore = None
         if chain.is_built:
-            response = chain.generate_multi_sentence(
+            raw_response = chain.generate_multi_sentence(
                 max_sentences=3,
                 seed_text=question,
             )
-            messageScore = score(question, response)
-            response = strip_trailing_period(response + f"\n\nmessage score: {messageScore}")  # #2
+            messageScore = score(question, raw_response)
+            response = strip_trailing_period(raw_response + f"\n\nmessage score: {messageScore}")  # #2
         else:
             response = "need to /sync first so i have something to work with"
         # Show the question and response together
         await interaction.followup.send(
             f"**{interaction.user.display_name} asked:** {question}\n\n{response}"
         )
+        if messageScore is not None:
+            await self._record_score(
+                interaction.guild_id, interaction.channel_id, interaction.user,
+                question, raw_response, messageScore,
+            )
+
+    async def _record_score(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user: discord.abc.User,
+        question: str,
+        response: str,
+        message_score: float,
+    ) -> None:
+        """Save a query's score and update the leaderboard. Never raises."""
+        try:
+            await database.record_score(
+                guild_id, channel_id, user.id, user.display_name,
+                question, response, message_score,
+            )
+            leaderboard = self.bot.get_cog("LeaderboardCog")
+            if leaderboard:
+                await leaderboard.on_new_score(guild_id, user.id, message_score)
+        except Exception:
+            logger.exception("Failed to record score for %s", user)
 
     # ── /teams — League of Legends custom game team maker ────────────────
 

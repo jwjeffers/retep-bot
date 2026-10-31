@@ -109,7 +109,35 @@ async def init_db(db_path: str = DB_PATH) -> None:
             )
         """)
 
+        # Query scores — every question asked to Retep and the score it produced
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS query_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                user_name TEXT NOT NULL,
+                question TEXT NOT NULL,
+                response TEXT NOT NULL,
+                score REAL NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        # Leaderboard channel + the live embed message posted there
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS leaderboard_config (
+                guild_id INTEGER PRIMARY KEY,
+                channel_id INTEGER NOT NULL,
+                message_id INTEGER
+            )
+        """)
+
         # Indexes for fast lookups
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_scores_guild
+            ON query_scores (guild_id, user_id, score)
+        """)
         await db.execute("""
             CREATE INDEX IF NOT EXISTS idx_messages_channel
             ON messages (channel_id, timestamp)
@@ -374,6 +402,95 @@ async def is_chat_channel(channel_id: int) -> bool:
             (channel_id,),
         )
         return await cursor.fetchone() is not None
+
+
+# ── Scores / Leaderboard ─────────────────────────────────────────────────────
+
+
+async def record_score(
+    guild_id: int,
+    channel_id: int,
+    user_id: int,
+    user_name: str,
+    question: str,
+    response: str,
+    score: float,
+) -> None:
+    """Store the score a user's question to Retep produced."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO query_scores
+               (guild_id, channel_id, user_id, user_name, question, response, score, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                guild_id,
+                channel_id,
+                user_id,
+                user_name,
+                question,
+                response,
+                score,
+                datetime.now().isoformat(),
+            ),
+        )
+        await db.commit()
+
+
+async def get_top_scores(guild_id: int, limit: int = 10) -> list[dict]:
+    """
+    Get each user's best score in the guild, highest first.
+    Ties go to whoever reached the score first.
+    Returns dicts with: user_id, user_name, score, question, created_at.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # SQLite fills the bare columns from the row holding MAX(score)
+        cursor = await db.execute(
+            """SELECT user_id, user_name, MAX(score) AS score, question, created_at
+               FROM query_scores
+               WHERE guild_id = ?
+               GROUP BY user_id
+               ORDER BY score DESC, created_at ASC
+               LIMIT ?""",
+            (guild_id, limit),
+        )
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def set_leaderboard_channel(guild_id: int, channel_id: int) -> None:
+    """Set the guild's leaderboard channel. Clears any previously posted message."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO leaderboard_config (guild_id, channel_id, message_id)
+               VALUES (?, ?, NULL)
+               ON CONFLICT(guild_id) DO UPDATE SET
+               channel_id = excluded.channel_id, message_id = NULL""",
+            (guild_id, channel_id),
+        )
+        await db.commit()
+
+
+async def get_leaderboard_config(guild_id: int) -> Optional[dict]:
+    """Get the guild's leaderboard channel_id and message_id, or None if unset."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT channel_id, message_id FROM leaderboard_config WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def set_leaderboard_message(guild_id: int, message_id: int) -> None:
+    """Remember the live leaderboard message so it can be edited later."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE leaderboard_config SET message_id = ? WHERE guild_id = ?",
+            (message_id, guild_id),
+        )
+        await db.commit()
 
 
 # ── Analytics ────────────────────────────────────────────────────────────────
