@@ -444,12 +444,18 @@ async def get_top_scores(guild_id: int, limit: int = 10) -> list[dict]:
     """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        # SQLite fills the bare columns from the row holding MAX(score)
+        # Rank each user's rows by score, earliest first on ties, and keep their best one
         cursor = await db.execute(
-            """SELECT user_id, user_name, MAX(score) AS score, question, created_at
-               FROM query_scores
-               WHERE guild_id = ?
-               GROUP BY user_id
+            """SELECT user_id, user_name, score, question, created_at
+               FROM (
+                   SELECT user_id, user_name, score, question, created_at,
+                          ROW_NUMBER() OVER (
+                              PARTITION BY user_id ORDER BY score DESC, created_at ASC
+                          ) AS rank
+                   FROM query_scores
+                   WHERE guild_id = ?
+               )
+               WHERE rank = 1
                ORDER BY score DESC, created_at ASC
                LIMIT ?""",
             (guild_id, limit),

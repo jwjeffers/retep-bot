@@ -1,6 +1,7 @@
 from __future__ import annotations
 """Chat cog — handles @mentions, /ask, and /teams commands."""
 
+import asyncio
 import logging
 import random
 import discord
@@ -54,8 +55,13 @@ class ChatCog(commands.Cog):
             message.content[:100],
         )
 
-        # Clean the mention from the message to use as seed
-        clean_content = message.content.replace(f"<@{self.bot.user.id}>", "").strip()
+        # Clean the mention (plain <@id> or legacy nickname <@!id> form) from the message to use as seed
+        clean_content = (
+            message.content
+            .replace(f"<@{self.bot.user.id}>", "")
+            .replace(f"<@!{self.bot.user.id}>", "")
+            .strip()
+        )
 
         # Generate response using Markov chain
         chain = await get_chain(message.guild.id)
@@ -67,16 +73,21 @@ class ChatCog(commands.Cog):
             response = strip_trailing_period(response)  # #2
         else:
             response = ""
-        messageScore = score(clean_content, response)
-        if response:
-            # Just reply directly — the original message is already visible
+        if not response:
+            logger.warning("Empty Markov response for mention in #%s", message.channel.name)
+            return
+
+        # A bare @mention asks nothing, so there's no question to score
+        messageScore = await self._safe_score(clean_content, response) if clean_content else None
+        # Just reply directly — the original message is already visible
+        if messageScore is None:
+            await message.reply(response, mention_author=False)
+        else:
             await message.reply(response + f"\n\nmessage score: {messageScore}", mention_author=False)
             await self._record_score(
                 message.guild.id, message.channel.id, message.author,
                 clean_content, response, messageScore,
             )
-        else:
-            logger.warning("Empty Markov response for mention in #%s", message.channel.name)
 
     @app_commands.command(name="ask", description="Ask Retep a question")
     @app_commands.describe(question="What do you want to ask Retep?")
@@ -84,38 +95,52 @@ class ChatCog(commands.Cog):
         self, interaction: discord.Interaction, question: str
     ):
         """Slash command to ask Retep something."""
-        # Defer IMMEDIATELY to avoid 3-second interaction timeout
-        await interaction.response.defer()
-
-        # Only in chat-list channels
+        # Only in chat-list channels. Checked before deferring: once a public defer is sent,
+        # the first followup replaces it and can't be made ephemeral
         if not await database.is_chat_channel(interaction.channel_id):
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "I'm not allowed to chat in this channel! An admin needs to add it with `/chatlist add`.",
                 ephemeral=True,
             )
             return
 
+        # Defer right away to avoid the 3-second interaction timeout
+        await interaction.response.defer()
+
         # Generate response using Markov chain
         chain = await get_chain(interaction.guild_id)
         messageScore = None
         if chain.is_built:
-            raw_response = chain.generate_multi_sentence(
+            raw_response = strip_trailing_period(chain.generate_multi_sentence(
                 max_sentences=3,
                 seed_text=question,
-            )
-            messageScore = score(question, raw_response)
-            response = strip_trailing_period(raw_response + f"\n\nmessage score: {messageScore}")  # #2
+            ))  # #2
+            messageScore = await self._safe_score(question, raw_response)
+            response = raw_response
+            if messageScore is not None:
+                response += f"\n\nmessage score: {messageScore}"
         else:
             response = "need to /sync first so i have something to work with"
-        # Show the question and response together
+        # Show the question and response together, shortening long questions
+        # so the message stays under Discord's 2000 character limit
+        shown_question = question if len(question) <= 500 else question[:500] + "…"
         await interaction.followup.send(
-            f"**{interaction.user.display_name} asked:** {question}\n\n{response}"
+            f"**{interaction.user.display_name} asked:** {shown_question}\n\n{response}"[:2000]
         )
         if messageScore is not None:
             await self._record_score(
                 interaction.guild_id, interaction.channel_id, interaction.user,
                 question, raw_response, messageScore,
             )
+
+    async def _safe_score(self, question: str, response: str) -> float | None:
+        """Score in a worker thread so the models don't block the event loop.
+        Returns None if scoring fails, so Retep still replies without a score."""
+        try:
+            return await asyncio.to_thread(score, question, response)
+        except Exception:
+            logger.exception("Failed to score response")
+            return None
 
     async def _record_score(
         self,

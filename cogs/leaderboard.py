@@ -26,6 +26,7 @@ class LeaderboardCog(commands.Cog):
     leaderboard_group = app_commands.Group(
         name="leaderboard",
         description="Retep's message score leaderboard",
+        guild_only=True,
     )
 
     @leaderboard_group.command(name="channel", description="Set the channel where the leaderboard is posted")
@@ -40,7 +41,13 @@ class LeaderboardCog(commands.Cog):
                 "You need the **Manage Server** permission to set the leaderboard channel.",
             )
             return
-        await database.set_leaderboard_channel(interaction.guild_id, channel.id)
+        async with self._lock(interaction.guild_id):
+            old = await database.get_leaderboard_config(interaction.guild_id)
+            # Same channel again: keep the existing board and just refresh it
+            if not old or old["channel_id"] != channel.id:
+                if old and old["message_id"]:
+                    await self._delete_board(old["channel_id"], old["message_id"])
+                await database.set_leaderboard_channel(interaction.guild_id, channel.id)
         posted = await self.refresh(interaction.guild_id)
         if posted:
             await interaction.followup.send(
@@ -61,11 +68,16 @@ class LeaderboardCog(commands.Cog):
     async def build_embed(self, guild_id: int) -> discord.Embed:
         """Build the top 10 leaderboard embed for a guild."""
         top = await database.get_top_scores(guild_id, LEADERBOARD_SIZE)
+        guild = self.bot.get_guild(guild_id)
 
         lines = []
         for rank, entry in enumerate(top, start=1):
             badge = MEDALS[rank - 1] if rank <= len(MEDALS) else f"`{rank}.`"
-            lines.append(f"{badge} <@{entry['user_id']}> — **{entry['score']:.2f}**")
+            # Mentions in embeds only resolve for members the viewer's client has loaded,
+            # so show a plain name: the current server name if cached, else the saved one
+            member = guild.get_member(entry["user_id"]) if guild else None
+            name = discord.utils.escape_markdown(member.display_name if member else entry["user_name"])
+            lines.append(f"{badge} {name} — **{entry['score']:.2f}**")
 
         embed = discord.Embed(
             title="🏆 Retep Leaderboard 🏆",
@@ -81,8 +93,7 @@ class LeaderboardCog(commands.Cog):
         Edit the live leaderboard message, or post a new one if it's missing.
         Returns True if the leaderboard is up to date in its channel.
         """
-        lock = self._locks.setdefault(guild_id, asyncio.Lock())
-        async with lock:
+        async with self._lock(guild_id):
             config = await database.get_leaderboard_config(guild_id)
             if not config:
                 return False
@@ -96,9 +107,10 @@ class LeaderboardCog(commands.Cog):
 
             try:
                 if config["message_id"]:
+                    # Edit by ID without fetching: fetching needs Read Message History,
+                    # editing our own message doesn't
                     try:
-                        message = await channel.fetch_message(config["message_id"])
-                        await message.edit(embed=embed)
+                        await channel.get_partial_message(config["message_id"]).edit(embed=embed)
                         return True
                     except discord.NotFound:
                         logger.info("Leaderboard message was deleted, posting a new one")
@@ -109,6 +121,23 @@ class LeaderboardCog(commands.Cog):
             except discord.HTTPException as e:
                 logger.error("Failed to update leaderboard in #%s: %s", channel, e)
                 return False
+
+    def _lock(self, guild_id: int) -> asyncio.Lock:
+        if guild_id not in self._locks:
+            self._locks[guild_id] = asyncio.Lock()
+        return self._locks[guild_id]
+
+    async def _delete_board(self, channel_id: int, message_id: int) -> None:
+        """Remove an old leaderboard message so it doesn't sit there going stale."""
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            return
+        try:
+            await channel.get_partial_message(message_id).delete()
+        except discord.NotFound:
+            pass
+        except discord.HTTPException as e:
+            logger.warning("Couldn't delete old leaderboard message in #%s: %s", channel, e)
 
     async def on_new_score(self, guild_id: int, user_id: int, score: float) -> None:
         """Refresh the leaderboard if a just-recorded score made the top 10."""

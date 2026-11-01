@@ -51,6 +51,17 @@ def test_top_scores_tie_goes_to_first(tmp_path):
     assert [e["user_id"] for e in top] == [1, 2]
 
 
+def test_tie_uses_first_time_user_reached_best(tmp_path):
+    _setup_db(tmp_path)
+    _record(1, 50.0)
+    _record(2, 50.0)
+    # User 1 matching their own best later must not push them behind user 2
+    _record(1, 50.0)
+
+    top = _run(database.get_top_scores(1))
+    assert [e["user_id"] for e in top] == [1, 2]
+
+
 def test_leaderboard_config(tmp_path):
     _setup_db(tmp_path)
     assert _run(database.get_leaderboard_config(1)) is None
