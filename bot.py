@@ -49,6 +49,7 @@ COGS = [
     "cogs.random_talk",
     "cogs.sync",
     "cogs.admin",
+    "cogs.leaderboard",
 ]
 
 

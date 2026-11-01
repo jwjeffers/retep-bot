@@ -36,6 +36,8 @@ Retep is a Discord bot that absorbs the personality, slang, and chat mannerisms 
 | `/chatlist add\|remove\|show` | Manage which channels Retep can speak in (admin only) |
 | `/sync` | Manually trigger chat history sync and Markov chain rebuild (admin only) |
 | `/retep` | Show bot status: read/chat channels, message count, and today's schedule |
+| `/leaderboard channel <channel>` | Set the channel for the live top 10 message score leaderboard (Manage Server only) |
+| `/leaderboard show` | Privately show the current top 10 message scores |
 
 ### 🔄 Sync & Data
 - **Startup sync** — fetches latest 1,000 messages per read channel on boot
@@ -52,13 +54,15 @@ retep-bot/
 ├── cogs/
 │   ├── admin.py            # /readlist, /chatlist, /retep, /sync commands
 │   ├── chat.py             # @mention replies, /ask, /teams
+│   ├── leaderboard.py      # /leaderboard and the live top 10 score embed
 │   ├── random_talk.py      # Scheduled messages, emoji reactions, GIF posting
 │   └── sync.py             # Message/reaction history ingestion
 ├── core/
 │   ├── config.py           # Environment config loader
 │   ├── database.py         # SQLite storage (messages, channels, boosts, emoji)
 │   ├── markov.py           # Markov chain engine with recency weighting
-│   └── scheduler.py        # Bell-curve daily message scheduler
+│   ├── scheduler.py        # Bell-curve daily message scheduler
+│   └── score.py            # Message scoring (DialoGPT relevance + MiniLM similarity)
 ├── .env.example            # Environment variable template
 ├── requirements.txt        # Python dependencies
 ├── setup_server.sh         # Oracle Cloud / Linux deployment script
@@ -69,7 +73,8 @@ retep-bot/
 ## Setup
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.10+
+- About 1 GB of free RAM for the message scoring models
 - A Discord bot token ([Discord Developer Portal](https://discord.com/developers/applications))
 
 ### Installation
@@ -79,8 +84,13 @@ git clone https://github.com/jwjeffers/retep-bot.git
 cd retep-bot
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
+
+Installing the CPU-only build of PyTorch first matters on Linux: the default build pulls in several GB of CUDA libraries the bot never uses. The scoring models (about 420 MB) download from Hugging Face the first time someone asks Retep a question.
+
+The leaderboard channel needs Retep to have **Send Messages** and **Embed Links** there.
 
 ### Configuration
 
@@ -124,6 +134,12 @@ bash setup_server.sh
 ```
 
 This installs dependencies, clones the repo, and sets up a systemd service with auto-restart. See the script for details.
+
+When updating an existing server, install any new dependencies before restarting:
+
+```bash
+cd ~/retep-bot && git pull && venv/bin/pip install -r requirements.txt && sudo systemctl restart retep
+```
 
 ## License
 

@@ -47,6 +47,8 @@ echo "[4/6] Setting up Python virtual environment..."
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
+# CPU-only PyTorch: the default Linux build pulls in several GB of CUDA libraries the bot never uses
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 
 # Create .env file
